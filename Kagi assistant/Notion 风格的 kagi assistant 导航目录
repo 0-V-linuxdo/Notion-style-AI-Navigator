@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Notion 风格的 kagi assistant 导航目录 +icon
+// @name         Notion 风格的 kagi assistant 导航目录 [20251022] v1.0.0
 // @namespace    0_V userscripts/Notion 风格的 kagi assistant 导航目录
-// @version      1.0.0
+// @version      [20251022] v1.0.0
 // @description  为 Kagi Assistant 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
 // @match        https://kagi.com/assistant/*
@@ -13,7 +13,7 @@
 // @license      MIT
 // @forked-from  https://greasyfork.org/scripts/541002
 //
-// @icon         data:image/svg+xml,%3Csvg%20width%3D%2250%22%20height%3D%2250%22%20viewBox%3D%220%200%202.344%202.344%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%3Cpath%20d%3D%22M0.488%200H1.855A0.488%200.488%200%200%201%202.344%200.488V1.855A0.488%200.488%200%200%201%201.855%202.344H0.488A0.488%200.488%200%200%201%200%201.855V0.488A0.488%200.488%200%200%201%200.488%200z%22%20fill%3D%22%234835bc%22%2F%3E%0A%20%20%20%20%3Ccircle%20cx%3D%220.65%22%20cy%3D%220.65%22%20r%3D%220.12%22%20fill%3D%22white%22%2F%3E%0A%20%20%20%20%3Crect%20x%3D%220.9%22%20y%3D%220.59%22%20width%3D%220.8%22%20height%3D%220.12%22%20fill%3D%22white%22%20rx%3D%220.06%22%2F%3E%0A%20%20%20%20%3Ccircle%20cx%3D%220.65%22%20cy%3D%221.172%22%20r%3D%220.12%22%20fill%3D%22white%22%2F%3E%0A%20%20%20%20%3Crect%20x%3D%220.9%22%20y%3D%221.112%22%20width%3D%220.8%22%20height%3D%220.12%22%20fill%3D%22white%22%20rx%3D%220.06%22%2F%3E%0A%20%20%20%20%3Ccircle%20cx%3D%220.65%22%20cy%3D%221.694%22%20r%3D%220.12%22%20fill%3D%22white%22%2F%3E%0A%20%20%20%20%3Crect%20x%3D%220.9%22%20y%3D%221.634%22%20width%3D%220.5%22%20height%3D%220.12%22%20fill%3D%22white%22%20rx%3D%220.06%22%2F%3E%0A%3C%2Fsvg%3E%0A
+// @icon         https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/refs/heads/main/site_icons/kagi%20assistant_icon.svg
 // ==/UserScript==
 
 // ================================================
