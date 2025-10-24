@@ -1,178 +1,121 @@
-/**
- * Notion Style AI Navigator - Core Module
- * ---------------------------------------
- * This file contains the reusable core logic that powers the Notion-style
- * floating navigation menu. Provide configuration via the exported init
- * function to adapt it for a specific website or platform.
- *
- * The module preserves the behaviour of the original userscript while
- * allowing the metadata/configuration to live in a thin Tampermonkey wrapper.
- */
-(function attachNotionStyleNavigator(global) {
+(function (global) {
   "use strict";
 
+  // Public API object
+  const NotionStyleAINavigator = {};
+
+  // Deep merge utility (simple)
+  function deepMerge(target, source) {
+    const out = Array.isArray(target) ? target.slice() : { ...target };
+    if (Array.isArray(source)) return source.slice();
+    for (const [k, v] of Object.entries(source || {})) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        out[k] = deepMerge(out[k] || {}, v);
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
+  }
+
+  // Default configuration
   const DEFAULT_CONFIG = {
+    // Guard to decide whether to run on current page
+    shouldRun: null,
+    // Platform detection
+    platforms: [],
+    // GM wrappers (optional)
+    gm: {
+      getValue: null,
+      setValue: null,
+      registerMenuCommand: null,
+    },
+    // Menu
+    menuLabel: "⚙️ 导航效果设置",
+    // Storage
     storageKey: "prompt-nav-effect-mode",
     defaultEffect: "border",
-    menuCommandLabel: "⚙️ 导航效果设置",
-    initDelayMs: 2000,
-    summaryMaxLen: 60,
-    userEmoji: "❓",
-    assistantEmoji: "🤖",
-    customStyles: "",
+    // Visual/behavior constants
+    constants: {
+      CONTAINER_ID: "prompt-nav-container",
+      INDICATOR_ID: "prompt-nav-indicator",
+      MENU_ID: "prompt-nav-menu",
+      INDICATOR_LINE_CLASS: "nav-indicator-line",
+      ACTIVE_CLASS: "active",
+      MESSAGE_ID_PREFIX: "prompt-nav-item-",
+      SCROLL_OFFSET: 30,
+      SCROLL_END_TIMEOUT: 150,
+      DEBOUNCE_BUILD_MS: 500,
+      THROTTLE_UPDATE_MS: 100,
+      INIT_DELAY_MS: 2000,
+      SUMMARY_MAX_LEN: 60,
+      CODE_LANG_LABEL_CLASS: "prompt-nav-code-lang-label",
+      USER_EMOJI: "❓",
+      ASSISTANT_EMOJI: "🤖",
+    },
   };
 
-  const DEFAULT_CONSTANTS = {
-    CONTAINER_ID: "prompt-nav-container",
-    INDICATOR_ID: "prompt-nav-indicator",
-    MENU_ID: "prompt-nav-menu",
-    INDICATOR_LINE_CLASS: "nav-indicator-line",
-    ACTIVE_CLASS: "active",
-    MESSAGE_ID_PREFIX: "prompt-nav-item-",
-    SCROLL_OFFSET: 30,
-    SCROLL_END_TIMEOUT: 150,
-    DEBOUNCE_BUILD_MS: 500,
-    THROTTLE_UPDATE_MS: 100,
-    SUMMARY_MAX_LEN: 60,
-    CODE_LANG_LABEL_CLASS: "prompt-nav-code-lang-label",
-    USER_EMOJI: "❓",
-    ASSISTANT_EMOJI: "🤖",
-  };
-
-  const DEFAULT_EFFECTS = [
-    { id: "none", name: "无效果（纯平滑滚动）", description: "仅滚动，不显示任何动画效果" },
-    { id: "border", name: "高亮边框", description: "显示 3px 彩色边框，持续 2 秒" },
-    { id: "pulse", name: "脉冲光晕", description: "边框脉冲闪烁，持续 2 秒" },
-    { id: "fade", name: "淡入淡出", description: "背景淡入淡出效果，持续 1.5 秒" },
-    { id: "jiggle", name: "经典抖动", description: "水平微抖动（原效果）" },
-  ];
-
-  function normalizePlatform(platform) {
-    if (!platform || !platform.messageSelector) {
-      console.warn("[NotionStyleNavigator] 无效平台配置，缺少 messageSelector。", platform);
-      return null;
-    }
-
-    const hosts = Array.isArray(platform.hosts) ? platform.hosts.filter(Boolean) : [];
-
-    let pathRegex = null;
-    if (platform.pathRegex instanceof RegExp) {
-      pathRegex = platform.pathRegex;
-    } else if (typeof platform.pathRegex === "string" && platform.pathRegex.trim().length > 0) {
-      try {
-        pathRegex = new RegExp(platform.pathRegex);
-      } catch (e) {
-        console.warn("[NotionStyleNavigator] 无效的 pathRegex:", platform.pathRegex, e);
-      }
-    }
-
-    const pathnames = Array.isArray(platform.pathnames) ? platform.pathnames.filter(Boolean) : [];
-    const pathPrefixes = Array.isArray(platform.pathPrefixes) ? platform.pathPrefixes.filter(Boolean) : [];
-
-    return {
-      name: typeof platform.name === "string" && platform.name ? platform.name : "Unnamed Platform",
-      hosts,
-      pathRegex,
-      pathnames,
-      pathPrefixes,
-      messageSelector: platform.messageSelector,
-      scrollContainerSelector:
-        typeof platform.scrollContainerSelector === "string" && platform.scrollContainerSelector
-          ? platform.scrollContainerSelector
-          : null,
-    };
-  }
-
-  function normalizeConfig(options = {}) {
-    const config = {
-      storageKey:
-        typeof options.storageKey === "string" && options.storageKey ? options.storageKey : DEFAULT_CONFIG.storageKey,
-      defaultEffect:
-        typeof options.defaultEffect === "string" && options.defaultEffect
-          ? options.defaultEffect
-          : DEFAULT_CONFIG.defaultEffect,
-      menuCommandLabel:
-        typeof options.menuCommandLabel === "string" && options.menuCommandLabel
-          ? options.menuCommandLabel
-          : DEFAULT_CONFIG.menuCommandLabel,
-      initDelayMs: Number.isFinite(options.initDelayMs) ? options.initDelayMs : DEFAULT_CONFIG.initDelayMs,
-      summaryMaxLen: Number.isFinite(options.summaryMaxLen) ? options.summaryMaxLen : DEFAULT_CONFIG.summaryMaxLen,
-      userEmoji:
-        typeof options.userEmoji === "string" && options.userEmoji ? options.userEmoji : DEFAULT_CONFIG.userEmoji,
-      assistantEmoji:
-        typeof options.assistantEmoji === "string" && options.assistantEmoji
-          ? options.assistantEmoji
-          : DEFAULT_CONFIG.assistantEmoji,
-      customStyles: typeof options.customStyles === "string" ? options.customStyles : DEFAULT_CONFIG.customStyles,
-      effects: Array.isArray(options.effects) && options.effects.length > 0 ? options.effects : null,
-      platforms: Array.isArray(options.platforms) ? options.platforms.map(normalizePlatform).filter(Boolean) : [],
-      constants: {},
-    };
-
-    config.constants = {
-      ...DEFAULT_CONSTANTS,
-      SUMMARY_MAX_LEN: config.summaryMaxLen,
-      USER_EMOJI: config.userEmoji,
-      ASSISTANT_EMOJI: config.assistantEmoji,
-      ...(options.constants || {}),
-    };
-
-    return config;
-  }
-
+  // Storage manager with GM/localStorage fallback
   class StorageManager {
-    constructor(config) {
-      this.storageKey = config.storageKey;
-      this.defaultEffect = config.defaultEffect;
+    constructor(cfg) {
+      this.storageKey = cfg.storageKey || "prompt-nav-effect-mode";
+      this.defaultEffect = cfg.defaultEffect || "border";
+      this.gm = cfg.gm || {};
     }
-
     getEffect() {
       try {
-        if (typeof GM_getValue === "function") {
-          return GM_getValue(this.storageKey, this.defaultEffect);
+        if (this.gm?.getValue) {
+          return this.gm.getValue(this.storageKey, this.defaultEffect);
         }
-      } catch (e) {
-        console.warn("[NotionStyleNavigator] 读取存储失败:", e);
+      } catch {}
+      try {
+        const v = global.localStorage?.getItem(this.storageKey);
+        return v || this.defaultEffect;
+      } catch {
+        return this.defaultEffect;
       }
-      return this.defaultEffect;
     }
-
     setEffect(effect) {
       try {
-        if (typeof GM_setValue === "function") {
-          GM_setValue(this.storageKey, effect);
+        if (this.gm?.setValue) {
+          this.gm.setValue(this.storageKey, effect);
+          return;
         }
+      } catch {}
+      try {
+        global.localStorage?.setItem(this.storageKey, effect);
       } catch (e) {
-        console.warn("[NotionStyleNavigator] 保存设置失败:", e);
+        console.warn("[Prompt Navigator] 无法保存设置：", e);
       }
     }
   }
 
+  // Visual effect manager
   class EffectManager {
-    constructor(config, storageManager) {
-      this.config = config;
+    constructor(storageManager) {
       this.storageManager = storageManager;
       this.currentElement = null;
       this.currentEffect = storageManager.getEffect();
       this.effectTimeout = null;
       this.pulseInterval = null;
     }
-
     updateEffect(effectType) {
       this.currentEffect = effectType;
       this.storageManager.setEffect(effectType);
     }
-
     getAvailableEffects() {
-      return this.config.effects || DEFAULT_EFFECTS;
+      return [
+        { id: "none", name: "无效果（纯平滑滚动）", description: "仅滚动，不显示任何动画效果" },
+        { id: "border", name: "高亮边框", description: "显示 3px 彩色边框，持续 2 秒" },
+        { id: "pulse", name: "脉冲光晕", description: "边框脉冲闪烁，持续 2 秒" },
+        { id: "fade", name: "淡入淡出", description: "背景淡入淡出效果，持续 1.5 秒" },
+        { id: "jiggle", name: "经典抖动", description: "水平微抖动（原效果）" },
+      ];
     }
-
     applyEffect(element) {
       if (!element) return;
-
       this.clearEffect();
       this.currentElement = element;
-
       switch (this.currentEffect) {
         case "none":
           break;
@@ -192,45 +135,32 @@
           this.applyBorderEffect(element);
       }
     }
-
     applyBorderEffect(element) {
       element.classList.add("prompt-nav-effect-border");
       this.effectTimeout = setTimeout(() => {
-        if (element && element.parentNode) {
-          element.classList.remove("prompt-nav-effect-border");
-        }
+        element?.classList?.remove("prompt-nav-effect-border");
       }, 2000);
     }
-
     applyPulseEffect(element) {
       element.classList.add("prompt-nav-effect-pulse");
       this.effectTimeout = setTimeout(() => {
-        if (element && element.parentNode) {
-          element.classList.remove("prompt-nav-effect-pulse");
-        }
+        element?.classList?.remove("prompt-nav-effect-pulse");
       }, 2000);
     }
-
     applyFadeEffect(element) {
       element.classList.add("prompt-nav-effect-fade");
       this.effectTimeout = setTimeout(() => {
-        if (element && element.parentNode) {
-          element.classList.remove("prompt-nav-effect-fade");
-        }
+        element?.classList?.remove("prompt-nav-effect-fade");
       }, 1500);
     }
-
     applyJiggleEffect(element) {
       element.classList.add("prompt-nav-jiggle-effect");
       this.effectTimeout = setTimeout(() => {
-        if (element && element.parentNode) {
-          element.classList.remove("prompt-nav-jiggle-effect");
-        }
+        element?.classList?.remove("prompt-nav-jiggle-effect");
       }, 400);
     }
-
     clearEffect() {
-      if (this.currentElement && this.currentElement.parentNode) {
+      if (this.currentElement?.parentNode) {
         this.currentElement.classList.remove(
           "prompt-nav-effect-border",
           "prompt-nav-effect-pulse",
@@ -249,34 +179,27 @@
     }
   }
 
+  // Settings modal UI
   class SettingsModal {
-    constructor(config, effectManager) {
-      this.config = config;
+    constructor(effectManager) {
       this.effectManager = effectManager;
       this.modal = null;
       this.isDarkMode = this.detectDarkMode();
       this.previewContext = null;
     }
-
     detectDarkMode() {
       const root = document.documentElement;
       const hasDarkClass = root.classList.contains("dark") || root.classList.contains("theme-dark");
-      const hasDarkData =
-        root.getAttribute("data-theme") === "dark" || document.body.getAttribute("data-theme") === "dark";
-      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const hasDarkData = root.getAttribute("data-theme") === "dark" || document.body.getAttribute("data-theme") === "dark";
+      const prefersDark = global.matchMedia && global.matchMedia("(prefers-color-scheme: dark)").matches;
       return hasDarkClass || hasDarkData || prefersDark;
     }
-
     open() {
-      if (this.modal && document.body.contains(this.modal)) {
-        this.modal.remove();
-      }
-
+      if (this.modal && document.body.contains(this.modal)) this.modal.remove();
       this.isDarkMode = this.detectDarkMode();
       this.modal = this.createModal();
       document.body.appendChild(this.modal);
     }
-
     createModal() {
       const modal = document.createElement("div");
       modal.className = "prompt-nav-settings-modal-overlay";
@@ -337,8 +260,8 @@
         option.appendChild(label);
         option.appendChild(btn);
 
-        option.addEventListener("click", (event) => {
-          if (event.target.tagName !== "BUTTON") {
+        option.addEventListener("click", (e) => {
+          if (e.target.tagName !== "BUTTON") {
             radio.checked = true;
             this.selectEffect(effect.id);
           }
@@ -358,14 +281,11 @@
       content.appendChild(footer);
       modal.appendChild(content);
 
-      modal.addEventListener("click", (event) => {
-        if (event.target === modal) {
-          modal.remove();
-        }
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) modal.remove();
       });
-
-      const escHandler = (event) => {
-        if (event.key === "Escape") {
+      const escHandler = (e) => {
+        if (e.key === "Escape") {
           modal.remove();
           document.removeEventListener("keydown", escHandler);
         }
@@ -374,12 +294,10 @@
 
       return modal;
     }
-
     selectEffect(effectId) {
       this.effectManager.updateEffect(effectId);
-      console.log(`[NotionStyleNavigator] 已切换至效果: ${effectId}`);
+      console.log(`[Prompt Navigator] 已切换至效果: ${effectId}`);
     }
-
     previewEffect(effectId, effectName) {
       this.clearPreview();
 
@@ -392,22 +310,14 @@
       wrapper.appendChild(demoElement);
       document.body.appendChild(wrapper);
 
-      const tempStorage = new StorageManager({
-        storageKey: "__preview-effect",
-        defaultEffect: effectId,
-      });
-      const tempManager = new EffectManager({ effects: this.effectManager.getAvailableEffects() }, tempStorage);
+      const tempManager = new EffectManager(this.effectManager.storageManager);
       tempManager.currentEffect = effectId;
       tempManager.applyEffect(demoElement);
 
-      const pointerDownHandler = () => {
-        this.clearPreview();
-      };
-      window.addEventListener("pointerdown", pointerDownHandler, true);
+      const pointerDownHandler = () => this.clearPreview();
+      global.addEventListener("pointerdown", pointerDownHandler, true);
 
-      const timeoutId = window.setTimeout(() => {
-        this.clearPreview();
-      }, 2500);
+      const timeoutId = global.setTimeout(() => this.clearPreview(), 2500);
 
       this.previewContext = {
         wrapper,
@@ -417,16 +327,15 @@
         pointerDownHandler,
       };
     }
-
     clearPreview() {
       if (!this.previewContext) return;
       const { wrapper, element, manager, timeoutId, pointerDownHandler } = this.previewContext;
       if (timeoutId) clearTimeout(timeoutId);
-      if (pointerDownHandler) window.removeEventListener("pointerdown", pointerDownHandler, true);
+      if (pointerDownHandler) global.removeEventListener("pointerdown", pointerDownHandler, true);
       manager?.clearEffect();
-      if (wrapper && wrapper.parentNode) {
+      if (wrapper?.parentNode) {
         wrapper.remove();
-      } else if (element && element.parentNode) {
+      } else if (element?.parentNode) {
         element.remove();
       }
       this.previewContext = null;
@@ -434,53 +343,53 @@
   }
 
   class PromptNavigator {
-    constructor(config) {
-      this.config = config;
-      this.CONSTANTS = {
-        ...config.constants,
-      };
+    constructor(cfg, platform) {
+      this.cfg = cfg;
+      this.CONSTANTS = cfg.constants;
+      this.platform = platform;
 
-      this.#platform = this.#detectPlatform();
-      if (!this.#platform) return;
+      this.scrollParent = null;
+      this.debouncedBuildNav = this.debounce(this.buildNav.bind(this), this.CONSTANTS.DEBOUNCE_BUILD_MS);
+      this.throttledUpdateActiveLink = this.throttle(this.updateActiveLink.bind(this), this.CONSTANTS.THROTTLE_UPDATE_MS);
 
-      this.#storageManager = new StorageManager(this.config);
-      this.#effectManager = new EffectManager(this.config, this.#storageManager);
-      this.#settingsModal = new SettingsModal(this.config, this.#effectManager);
-
-      this.#debouncedBuildNav = this.#debounce(this.buildNav.bind(this), this.CONSTANTS.DEBOUNCE_BUILD_MS);
-      this.#throttledUpdateActiveLink = this.#throttle(
-        this.updateActiveLink.bind(this),
-        this.CONSTANTS.THROTTLE_UPDATE_MS
-      );
+      this.idToElementMap = new Map();
+      this.storageManager = new StorageManager(cfg);
+      this.effectManager = new EffectManager(this.storageManager);
+      this.settingsModal = new SettingsModal(this.effectManager);
     }
 
     init() {
-      if (!this.#platform) {
-        console.log("[NotionStyleNavigator] 当前页面不匹配任何平台配置。");
-        return;
-      }
-
       setTimeout(() => {
-        this.#addStyles();
-        this.#setupObservers();
-        this.#setupEventListeners();
-        this.#registerMenuCommand();
+        this.addStyles();
+        this.setupObservers();
+        this.setupEventListeners();
+        this.registerMenuCommand();
         this.buildNav();
-      }, this.config.initDelayMs);
+      }, this.CONSTANTS.INIT_DELAY_MS);
     }
 
-    buildNav() {
-      const messages = this.#queryMessages();
+    registerMenuCommand() {
+      try {
+        const label = this.cfg.menuLabel || "⚙️ 导航效果设置";
+        this.cfg.gm?.registerMenuCommand?.(label, () => this.settingsModal.open());
+      } catch (e) {
+        console.warn("[Prompt Navigator] GM_registerMenuCommand 不可用：", e);
+      }
+    }
 
-      if (messages.length === this.#idToElementMap.size && messages.length > 0) {
+    // Build navigation and indicator
+    buildNav() {
+      const messages = this.queryMessages();
+
+      if (messages.length === this.idToElementMap.size && messages.length > 0) {
+        let i = 0;
         let allMatch = true;
-        let index = 0;
-        for (const mappedElement of this.#idToElementMap.values()) {
-          if (mappedElement !== messages[index]) {
+        for (const mappedEl of this.idToElementMap.values()) {
+          if (mappedEl !== messages[i]) {
             allMatch = false;
             break;
           }
-          index++;
+          i++;
         }
         if (allMatch) {
           this.updateActiveLink();
@@ -488,48 +397,41 @@
         }
       }
 
-      this.#scrollParent = null;
-      this.#idToElementMap.clear();
+      this.scrollParent = null;
+      this.idToElementMap.clear();
 
       const navItems = [];
       messages.forEach((msg, index) => {
         const messageId = `${this.CONSTANTS.MESSAGE_ID_PREFIX}${index}`;
-        this.#idToElementMap.set(messageId, msg);
-
-        const text = this.#summarizeMessage(msg, index);
+        this.idToElementMap.set(messageId, msg);
+        const text = this.summarizeMessage(msg, index);
         navItems.push({ id: messageId, text });
       });
 
       const existingContainer = document.getElementById(this.CONSTANTS.CONTAINER_ID);
-      if (existingContainer) {
-        existingContainer.remove();
-      }
-
+      if (existingContainer) existingContainer.remove();
       if (navItems.length === 0) return;
 
-      const container = this.#createContainer();
-      const indicator = this.#createIndicator(navItems);
-      const menu = this.#createMenu(navItems);
+      const container = this.createContainer();
+      const indicator = this.createIndicator(navItems);
+      const menu = this.createMenu(navItems);
 
       container.append(menu, indicator);
       document.body.appendChild(container);
 
-      this.#updateTheme();
+      this.updateTheme();
       this.updateActiveLink();
     }
 
     updateActiveLink() {
       let lastVisibleMessageId = null;
-      const highlightThreshold = window.innerHeight * 0.4;
+      const highlightThreshold = global.innerHeight * 0.4;
 
-      for (const [id, msg] of this.#idToElementMap.entries()) {
+      for (const [id, msg] of this.idToElementMap.entries()) {
         if (!document.body.contains(msg)) continue;
         const rect = msg.getBoundingClientRect();
-        if (rect.top < highlightThreshold) {
-          lastVisibleMessageId = id;
-        } else {
-          break;
-        }
+        if (rect.top < highlightThreshold) lastVisibleMessageId = id;
+        else break;
       }
 
       const links = document.querySelectorAll(`#${this.CONSTANTS.MENU_ID} li a`);
@@ -547,85 +449,61 @@
         links[0].classList.add(this.CONSTANTS.ACTIVE_CLASS);
         indicatorLines[0]?.classList.add(this.CONSTANTS.ACTIVE_CLASS);
       }
-      this.#syncIndicatorScroll();
+      this.syncIndicatorScroll();
     }
 
-    #registerMenuCommand() {
-      if (typeof GM_registerMenuCommand !== "function") return;
-      try {
-        GM_registerMenuCommand(this.config.menuCommandLabel, () => {
-          this.#settingsModal.open();
-        });
-      } catch (e) {
-        console.warn("[NotionStyleNavigator] GM_registerMenuCommand 不可用:", e);
-      }
-    }
-
-    #queryMessages() {
-      const selector = this.#platform.messageSelector;
+    // Query message bubbles
+    queryMessages() {
+      const selector = this.platform?.messageSelector || "";
       const nodes = Array.from(document.querySelectorAll(selector));
       return nodes.filter((el) => {
         if (!(el instanceof HTMLElement)) return false;
         if (!document.body.contains(el)) return false;
-
         const isBubble = el.classList.contains("chat_bubble") || el.getAttribute("role") === "article";
         if (!isBubble) return false;
+        if (this.isBranchSelectorOnly(el)) return false;
 
-        if (this.#isBranchSelectorOnly(el)) {
-          return false;
-        }
-
-        const text = this.#extractText(el).trim();
+        const text = this.extractText(el).trim();
         return text.length > 0 || el.querySelector("pre, code, p, blockquote, ul, ol");
       });
     }
 
-    #isBranchSelectorOnly(el) {
+    isBranchSelectorOnly(el) {
       const selector = el.querySelector(".selector");
       if (!selector) return false;
 
       const clone = el.cloneNode(true);
       const cloneSelector = clone.querySelector(".selector");
-      if (cloneSelector) {
-        cloneSelector.remove();
-      }
+      if (cloneSelector) cloneSelector.remove();
 
       const noisySelectors = [".model", "button", "svg", "header", "footer", "[data-files]", "[data-edit]", ".code-buttons"];
-      noisySelectors.forEach((sel) => {
-        clone.querySelectorAll(sel).forEach((node) => node.remove());
-      });
+      noisySelectors.forEach((sel) => clone.querySelectorAll(sel).forEach((n) => n.remove()));
 
       const remainingText = (clone.textContent || "").replace(/\s+/g, " ").trim();
       return remainingText.length < 10;
     }
 
-    #getMessageTypeEmoji(el) {
+    getMessageTypeEmoji(el) {
+      const { USER_EMOJI, ASSISTANT_EMOJI } = this.CONSTANTS;
       const author = el.getAttribute("data-author");
-      if (author === "user") {
-        return this.CONSTANTS.USER_EMOJI;
-      } else if (author === "assistant") {
-        return this.CONSTANTS.ASSISTANT_EMOJI;
-      }
+      if (author === "user") return USER_EMOJI;
+      if (author === "assistant") return ASSISTANT_EMOJI;
 
       const ariaLabel = el.getAttribute("aria-label");
       if (ariaLabel) {
-        if (ariaLabel.includes("You said:")) {
-          return this.CONSTANTS.USER_EMOJI;
-        } else if (ariaLabel.includes("Assistant said:")) {
-          return this.CONSTANTS.ASSISTANT_EMOJI;
-        }
+        if (ariaLabel.includes("You said:")) return USER_EMOJI;
+        if (ariaLabel.includes("Assistant said:")) return ASSISTANT_EMOJI;
       }
-
-      return this.CONSTANTS.ASSISTANT_EMOJI;
+      return ASSISTANT_EMOJI;
     }
 
-    #createContainer() {
+    createContainer() {
       const container = document.createElement("div");
       container.id = this.CONSTANTS.CONTAINER_ID;
       return container;
     }
 
-    #createIndicator(navItems) {
+    createIndicator(navItems) {
       const indicator = document.createElement("div");
       indicator.id = this.CONSTANTS.INDICATOR_ID;
       const lineWrapper = document.createElement("div");
@@ -641,7 +519,7 @@
       return indicator;
     }
 
-    #createMenu(navItems) {
+    createMenu(navItems) {
       const menu = document.createElement("div");
       menu.id = this.CONSTANTS.MENU_ID;
       const list = document.createElement("ul");
@@ -651,7 +529,7 @@
         link.href = `#${item.id}`;
         link.innerHTML = item.text;
         link.dataset.targetId = item.id;
-        link.onclick = (event) => this.#handleLinkClick(event);
+        link.onclick = (e) => this.handleLinkClick(e);
 
         const listItem = document.createElement("li");
         listItem.appendChild(link);
@@ -662,42 +540,38 @@
       return menu;
     }
 
-    #handleLinkClick(event) {
+    handleLinkClick(event) {
       event.preventDefault();
       const link = event.currentTarget;
       const targetId = link.dataset.targetId;
-      const messageElement = this.#idToElementMap.get(targetId);
+      const messageElement = this.idToElementMap.get(targetId);
 
       if (!messageElement || !document.body.contains(messageElement)) {
-        console.error("[NotionStyleNavigator] 未找到目标消息节点:", targetId);
+        console.error("Prompt Navigator: Target message element not found or detached:", targetId);
         return;
       }
 
       document
-        .querySelectorAll(
-          `#${this.CONSTANTS.MENU_ID} li a, .${this.CONSTANTS.INDICATOR_LINE_CLASS}`
-        )
+        .querySelectorAll(`#${this.CONSTANTS.MENU_ID} li a, .${this.CONSTANTS.INDICATOR_LINE_CLASS}`)
         .forEach((el) => el.classList.remove(this.CONSTANTS.ACTIVE_CLASS));
 
       link.classList.add(this.CONSTANTS.ACTIVE_CLASS);
-      const indicatorLine = document.querySelector(
-        `.${this.CONSTANTS.INDICATOR_LINE_CLASS}[data-target-id="${targetId}"]`
-      );
+      const indicatorLine = document.querySelector(`.${this.CONSTANTS.INDICATOR_LINE_CLASS}[data-target-id="${targetId}"]`);
       indicatorLine?.classList.add(this.CONSTANTS.ACTIVE_CLASS);
 
-      this.#scrollToMessage(messageElement);
-      this.#syncIndicatorScroll();
+      this.scrollToMessage(messageElement);
+      this.syncIndicatorScroll();
     }
 
-    #scrollToMessage(messageElement) {
-      const scrollParent = this.#scrollParent || this.#resolveScrollParent(messageElement);
-      if (!this.#scrollParent) this.#scrollParent = scrollParent;
+    scrollToMessage(messageElement) {
+      const scrollParent = this.scrollParent || this.findScrollableParent(messageElement);
+      if (!this.scrollParent) this.scrollParent = scrollParent;
 
       let scrollTimeout;
       const scrollEndListener = () => {
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
-          this.#effectManager.applyEffect(messageElement);
+          this.effectManager.applyEffect(messageElement);
           scrollParent.removeEventListener("scroll", scrollEndListener);
         }, this.CONSTANTS.SCROLL_END_TIMEOUT);
       };
@@ -705,122 +579,72 @@
 
       const parentTop = scrollParent === document.documentElement ? 0 : scrollParent.getBoundingClientRect().top;
       const msgTop = messageElement.getBoundingClientRect().top;
-      const scrollTop = (scrollParent.scrollTop || window.scrollY) + msgTop - parentTop - this.CONSTANTS.SCROLL_OFFSET;
+      const scrollTop = (scrollParent.scrollTop || global.scrollY) + msgTop - parentTop - this.CONSTANTS.SCROLL_OFFSET;
 
       if (typeof scrollParent.scrollTo === "function") {
         scrollParent.scrollTo({ top: scrollTop, behavior: "smooth" });
       } else {
-        window.scrollTo({ top: scrollTop, behavior: "smooth" });
+        global.scrollTo({ top: scrollTop, behavior: "smooth" });
       }
     }
 
-    #resolveScrollParent(element) {
-      if (this.#platform.scrollContainerSelector) {
-        const manualParent = document.querySelector(this.#platform.scrollContainerSelector);
-        if (manualParent) {
-          return manualParent;
-        }
-      }
-      return this.#findScrollableParent(element);
-    }
-
-    #updateTheme() {
+    updateTheme() {
       const root = document.documentElement;
       const container = document.getElementById(this.CONSTANTS.CONTAINER_ID);
       if (!container) return;
 
       const hasDarkClass = root.classList.contains("dark") || root.classList.contains("theme-dark");
-      const hasDarkData =
-        root.getAttribute("data-theme") === "dark" || document.body.getAttribute("data-theme") === "dark";
-      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const hasDarkData = root.getAttribute("data-theme") === "dark" || document.body.getAttribute("data-theme") === "dark";
+      const prefersDark = global.matchMedia && global.matchMedia("(prefers-color-scheme: dark)").matches;
 
       const isDarkMode = hasDarkClass || hasDarkData || prefersDark;
       container.dataset.theme = isDarkMode ? "dark" : "light";
     }
 
-    #syncIndicatorScroll() {
+    syncIndicatorScroll() {
       const indicator = document.getElementById(this.CONSTANTS.INDICATOR_ID);
       const lineWrapper = document.getElementById("prompt-nav-indicator-wrapper");
-      const activeLine = indicator?.querySelector(
-        `.${this.CONSTANTS.INDICATOR_LINE_CLASS}.${this.CONSTANTS.ACTIVE_CLASS}`
-      );
-
+      const activeLine = indicator?.querySelector(`.${this.CONSTANTS.INDICATOR_LINE_CLASS}.${this.CONSTANTS.ACTIVE_CLASS}`);
       if (!indicator || !lineWrapper || !activeLine) return;
 
       const indicatorHeight = indicator.clientHeight;
       const wrapperHeight = lineWrapper.scrollHeight;
-
       if (wrapperHeight <= indicatorHeight) {
         lineWrapper.style.transform = `translateY(0px)`;
         return;
       }
-
       const activeLineTop = activeLine.offsetTop;
       const activeLineHeight = activeLine.offsetHeight;
-
       let desiredTranslateY = -(activeLineTop - indicatorHeight / 2 + activeLineHeight / 2);
       desiredTranslateY = Math.min(0, desiredTranslateY);
 
       const maxScroll = wrapperHeight - indicatorHeight;
       desiredTranslateY = Math.max(-maxScroll, desiredTranslateY);
-
       lineWrapper.style.transform = `translateY(${desiredTranslateY}px)`;
     }
 
-    #detectPlatform() {
-      const { hostname, pathname } = window.location;
-      return (
-        this.config.platforms.find((platform) => {
-          const hostMatch =
-            platform.hosts.length === 0 ||
-            platform.hosts.some((host) => this.#matchesHost(hostname, host));
-          if (!hostMatch) return false;
-
-          if (platform.pathRegex && !platform.pathRegex.test(pathname)) return false;
-          if (platform.pathnames.length > 0 && !platform.pathnames.includes(pathname)) return false;
-          if (
-            platform.pathPrefixes.length > 0 &&
-            !platform.pathPrefixes.some((prefix) => pathname.startsWith(prefix))
-          ) {
-            return false;
-          }
-
-          return true;
-        }) || null
-      );
-    }
-
-    #matchesHost(current, expected) {
-      if (!expected) return false;
-      if (current === expected) return true;
-      if (current.endsWith(`.${expected}`)) return true;
-      return current.includes(expected);
-    }
-
-    #setupObservers() {
+    setupObservers() {
       const observer = new MutationObserver(() => {
-        this.#debouncedBuildNav();
-        this.#updateTheme();
+        this.debouncedBuildNav();
+        this.updateTheme();
       });
       observer.observe(document.body, { childList: true, subtree: true });
 
-      const themeObserver = new MutationObserver(() => this.#updateTheme());
+      const themeObserver = new MutationObserver(() => this.updateTheme());
       themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
       themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class", "data-theme"] });
 
-      if (window.matchMedia) {
-        const mq = window.matchMedia("(prefers-color-scheme: dark)");
-        mq.addEventListener?.("change", () => this.#updateTheme());
+      if (global.matchMedia) {
+        const mq = global.matchMedia("(prefers-color-scheme: dark)");
+        mq.addEventListener?.("change", () => this.updateTheme());
       }
     }
 
-    #setupEventListeners() {
-      window.addEventListener("scroll", this.#throttledUpdateActiveLink, {
-        capture: true,
-      });
+    setupEventListeners() {
+      global.addEventListener("scroll", this.throttledUpdateActiveLink, { capture: true });
     }
 
-    #addStyles() {
+    addStyles() {
       const style = document.createElement("style");
       style.textContent = `
         :root {
@@ -984,7 +808,6 @@
           color: var(--nav-text-color);
           font-weight: 500;
         }
-
         #${this.CONSTANTS.MENU_ID} li a .nav-emoji {
           color: var(--nav-emoji-color);
           font-style: normal;
@@ -993,7 +816,6 @@
           display: inline-block;
           vertical-align: middle;
         }
-
         #${this.CONSTANTS.MENU_ID} li a strong {
           color: var(--nav-code-label-color);
           font-weight: 600;
@@ -1008,6 +830,7 @@
         #${this.CONSTANTS.MENU_ID}::-webkit-scrollbar-thumb { background-color: var(--nav-scrollbar-thumb); border-radius: 0.25rem; }
         #${this.CONSTANTS.MENU_ID}::-webkit-scrollbar-thumb:hover { background-color: var(--nav-scrollbar-thumb-hover); }
 
+        /* Effects */
         .prompt-nav-effect-border {
           position: relative;
           border-radius: 8px;
@@ -1023,335 +846,186 @@
           box-shadow: 0 0 0 0 var(--prompt-nav-highlight-ring, rgba(255, 215, 0, 0.45));
           animation: prompt-nav-border-highlight 2s ease-in-out forwards;
         }
-
         @keyframes prompt-nav-border-highlight {
-          0% {
-            box-shadow: 0 0 0 0 var(--prompt-nav-highlight-ring, rgba(255, 215, 0, 0.45));
-            opacity: 1;
-          }
-          60% {
-            box-shadow: 0 0 0 12px rgba(255, 215, 0, 0);
-            opacity: 0;
-          }
-          100% {
-            box-shadow: 0 0 0 12px rgba(255, 215, 0, 0);
-            opacity: 0;
-          }
+          0% { box-shadow: 0 0 0 0 var(--prompt-nav-highlight-ring, rgba(255, 215, 0, 0.45)); opacity: 1; }
+          60% { box-shadow: 0 0 0 12px rgba(255, 215, 0, 0); opacity: 0; }
+          100% { box-shadow: 0 0 0 12px rgba(255, 215, 0, 0); opacity: 0; }
         }
-
         .prompt-nav-effect-pulse {
           box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
           animation: prompt-nav-pulse 2s ease-in-out forwards;
         }
-
         @keyframes prompt-nav-pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
-          }
-          50% {
-            box-shadow: 0 0 0 15px rgba(59, 130, 246, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
-          }
+          0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+          50% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
         }
-
-        .prompt-nav-effect-fade {
-          animation: prompt-nav-fade 1.5s ease-in-out forwards;
-        }
-
+        .prompt-nav-effect-fade { animation: prompt-nav-fade 1.5s ease-in-out forwards; }
         @keyframes prompt-nav-fade {
-          0% {
-            background-color: rgba(59, 130, 246, 0);
-          }
-          50% {
-            background-color: rgba(59, 130, 246, 0.3);
-          }
-          100% {
-            background-color: rgba(59, 130, 246, 0);
-          }
+          0% { background-color: rgba(59, 130, 246, 0); }
+          50% { background-color: rgba(59, 130, 246, 0.3); }
+          100% { background-color: rgba(59, 130, 246, 0); }
         }
+        .prompt-nav-jiggle-effect { animation: prompt-nav-jiggle 400ms ease-in-out; }
 
-        .prompt-nav-jiggle-effect {
-          animation: prompt-nav-jiggle 400ms ease-in-out;
-        }
-
+        /* Settings modal */
         .prompt-nav-settings-modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          position: fixed; top: 0; left: 0; right: 0; bottom: 0;
           background-color: rgba(0, 0, 0, 0.5);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 10000;
-          animation: prompt-nav-overlay-fade-in 0.2s ease-in-out;
+          display: flex; justify-content: center; align-items: center;
+          z-index: 10000; animation: prompt-nav-overlay-fade-in 0.2s ease-in-out;
+        }
+        @keyframes prompt-nav-overlay-fade-in {
+          from { background-color: rgba(0,0,0,0); }
+          to { background-color: rgba(0,0,0,0.5); }
         }
 
-        @keyframes prompt-nav-overlay-fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
+        .prompt-nav-settings-modal-overlay[data-theme='light'] {
+          --settings-bg: #FFFFFF;
+          --settings-text: #1F2937;
+          --settings-border: #E5E7EB;
+          --settings-hover-bg: #F3F4F6;
+          --settings-active-bg: #DBEAFE;
+          --settings-secondary-text: #6B7280;
+        }
+        .prompt-nav-settings-modal-overlay[data-theme='dark'] {
+          --settings-bg: #1F2937;
+          --settings-text: #F3F4F6;
+          --settings-border: #374151;
+          --settings-hover-bg: #374151;
+          --settings-active-bg: #1E40AF;
+          --settings-secondary-text: #9CA3AF;
         }
 
         .prompt-nav-settings-modal-content {
-          width: 520px;
-          max-width: 90vw;
-          max-height: 90vh;
-          overflow-y: auto;
-          background-color: var(--settings-bg, #FFFFFF);
-          border-radius: 12px;
-          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
-          padding: 0;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          background-color: var(--settings-bg); color: var(--settings-text);
+          border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
+          animation: prompt-nav-modal-slide-up 0.3s ease-out;
         }
-
-        .prompt-nav-settings-modal-overlay[data-theme='dark'] .prompt-nav-settings-modal-content {
-          --settings-bg: #1F2937;
-          --settings-text: #E5E7EB;
-          --settings-secondary-text: #9CA3AF;
-          --settings-border: rgba(255, 255, 255, 0.1);
-          --settings-hover-bg: rgba(255, 255, 255, 0.08);
-        }
-        .prompt-nav-settings-modal-overlay[data-theme='light'] .prompt-nav-settings-modal-content {
-          --settings-bg: #FFFFFF;
-          --settings-text: #111827;
-          --settings-secondary-text: #6B7280;
-          --settings-border: rgba(17, 24, 39, 0.08);
-          --settings-hover-bg: rgba(59, 130, 246, 0.08);
+        @keyframes prompt-nav-modal-slide-up {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         .prompt-nav-settings-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 1.25rem 1.5rem;
-          border-bottom: 1px solid var(--settings-border);
-          color: var(--settings-text);
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 1.5rem; border-bottom: 1px solid var(--settings-border);
+          position: sticky; top: 0; background-color: var(--settings-bg);
         }
-
-        .prompt-nav-settings-header h2 {
-          margin: 0;
-          font-size: 1.125rem;
-          font-weight: 600;
-        }
-
+        .prompt-nav-settings-header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
         .prompt-nav-settings-close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          color: var(--settings-secondary-text);
-          padding: 0;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 6px;
-          transition: all 0.2s ease;
+          background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--settings-secondary-text);
+          padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+          border-radius: 6px; transition: all 0.2s ease;
         }
+        .prompt-nav-settings-close-btn:hover { background-color: var(--settings-hover-bg); color: var(--settings-text); }
 
-        .prompt-nav-settings-close-btn:hover {
-          background-color: var(--settings-hover-bg);
-          color: var(--settings-text);
-        }
-
-        .prompt-nav-settings-options {
-          padding: 1.5rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-
+        .prompt-nav-settings-options { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
         .prompt-nav-settings-option {
-          display: flex;
-          gap: 0.75rem;
-          align-items: flex-start;
-          padding: 1rem;
-          border: 1px solid var(--settings-border);
-          border-radius: 8px;
-          transition: all 0.2s ease;
-          cursor: pointer;
+          display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem;
+          border: 1px solid var(--settings-border); border-radius: 8px; transition: all 0.2s ease; cursor: pointer;
         }
-
-        .prompt-nav-settings-option:hover {
-          background-color: var(--settings-hover-bg);
-          border-color: #3B82F6;
-        }
-
+        .prompt-nav-settings-option:hover { background-color: var(--settings-hover-bg); border-color: #3B82F6; }
         .prompt-nav-settings-option input[type='radio'] {
-          margin-top: 0.125rem;
-          cursor: pointer;
-          width: 18px;
-          height: 18px;
-          accent-color: #3B82F6;
+          margin-top: 0.125rem; cursor: pointer; width: 18px; height: 18px; accent-color: #3B82F6;
         }
-
-        .prompt-nav-settings-option input[type='radio']:checked + label {
-          font-weight: 600;
-        }
-
-        .prompt-nav-settings-option label {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-          cursor: pointer;
-        }
-
-        .prompt-nav-settings-label-text {
-          font-weight: 500;
-          color: var(--settings-text);
-        }
-
-        .prompt-nav-settings-description {
-          font-size: 0.875rem;
-          color: var(--settings-secondary-text);
-        }
+        .prompt-nav-settings-option input[type='radio']:checked + label { font-weight: 600; }
+        .prompt-nav-settings-option label { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; }
+        .prompt-nav-settings-label-text { font-weight: 500; color: var(--settings-text); }
+        .prompt-nav-settings-description { font-size: 0.875rem; color: var(--settings-secondary-text); }
 
         .prompt-nav-settings-preview-btn {
-          padding: 0.5rem 1rem;
-          background-color: #3B82F6;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          font-size: 0.875rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          white-space: nowrap;
+          padding: 0.5rem 1rem; background-color: #3B82F6; color: white; border: none; border-radius: 6px;
+          font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease; white-space: nowrap;
         }
         .prompt-nav-settings-preview-btn:focus,
         .prompt-nav-settings-preview-btn:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+          outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
         }
+        .prompt-nav-settings-preview-btn:hover { background-color: #2563EB; transform: translateY(-2px); }
+        .prompt-nav-settings-preview-btn:active { transform: translateY(0); }
 
-        .prompt-nav-settings-preview-btn:hover {
-          background-color: #2563EB;
-          transform: translateY(-2px);
-        }
-
-        .prompt-nav-settings-preview-btn:active {
-          transform: translateY(0);
-        }
-
-        .prompt-nav-settings-footer {
-          padding: 1rem 1.5rem;
-          border-top: 1px solid var(--settings-border);
-          background-color: var(--settings-hover-bg);
-        }
-
-        .prompt-nav-settings-footer p {
-          margin: 0;
-          font-size: 0.875rem;
-          color: var(--settings-secondary-text);
-        }
+        .prompt-nav-settings-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--settings-border); background-color: var(--settings-hover-bg); }
+        .prompt-nav-settings-footer p { margin: 0; font-size: 0.875rem; color: var(--settings-secondary-text); }
 
         .prompt-nav-preview-wrapper {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 10001;
-          pointer-events: none;
+          position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          z-index: 10001; pointer-events: none;
         }
         .prompt-nav-preview-element {
-          padding: 2rem;
-          background-color: rgba(59, 130, 246, 0.1);
-          border-radius: 8px;
-          font-weight: 600;
-          color: #3B82F6;
+          padding: 2rem; background-color: rgba(59,130,246,0.1);
+          border-radius: 8px; font-weight: 600; color: #3B82F6;
         }
 
         @media (max-width: 640px) {
-          .prompt-nav-settings-modal-content {
-            width: 95%;
-            max-height: 90vh;
-          }
-
-          .prompt-nav-settings-option {
-            flex-direction: column;
-          }
-
-          .prompt-nav-settings-preview-btn {
-            width: 100%;
-          }
-
-          #${this.CONSTANTS.CONTAINER_ID} {
-            top: 5rem;
-            right: 0.5rem;
-          }
+          .prompt-nav-settings-modal-content { width: 95%; max-height: 90vh; }
+          .prompt-nav-settings-option { flex-direction: column; }
+          .prompt-nav-settings-preview-btn { width: 100%; }
+          #${this.CONSTANTS.CONTAINER_ID} { top: 5rem; right: 0.5rem; }
         }
-
-        ${this.config.customStyles}
       `;
       document.head.appendChild(style);
     }
 
-    #findScrollableParent(element) {
+    findScrollableParent(element) {
       let el = element.parentElement;
       while (el && el !== document.body) {
-        const style = window.getComputedStyle(el);
+        const style = global.getComputedStyle(el);
         const overflowY = style.overflowY;
-        if (overflowY === "auto" || overflowY === "scroll") {
-          return el;
-        }
+        if (overflowY === "auto" || overflowY === "scroll") return el;
         el = el.parentElement;
       }
       return document.documentElement;
     }
 
-    #extractText(rootEl) {
+    extractText(rootEl) {
       const clone = rootEl.cloneNode(true);
 
       const filenameEl = clone.querySelector(".filename");
       let filenamePrefix = "";
       if (filenameEl) {
-        filenamePrefix = `<strong>${this.#escapeHtml(filenameEl.textContent)}</strong> `;
+        filenamePrefix = `<strong>${this.escapeHtml(filenameEl.textContent)}</strong> `;
         filenameEl.remove();
       }
 
       const noisySelectors = [".model", "button", "svg", "header", "footer", "[data-files]", "[data-edit]", ".selector", ".code-buttons"];
-      noisySelectors.forEach((sel) => {
-        clone.querySelectorAll(sel).forEach((node) => node.remove());
-      });
+      noisySelectors.forEach((sel) => clone.querySelectorAll(sel).forEach((el) => el.remove()));
 
       const content = (clone.textContent || "").replace(/\s+/g, " ").trim();
-
       return filenamePrefix + content;
     }
 
-    #escapeHtml(text) {
+    escapeHtml(text) {
       const div = document.createElement("div");
-      div.textContent = text;
+      div.textContent = text || "";
       return div.innerHTML;
     }
 
-    #summarizeMessage(el, index) {
-      let text = this.#extractText(el).trim();
+    summarizeMessage(el, index) {
+      let text = this.extractText(el).trim();
       if (!text) text = el.textContent?.trim() || "";
-      if (!text) return `<span class="nav-emoji">${this.#getMessageTypeEmoji(el)}</span>Item ${index + 1}`;
+      if (!text) return `<span class="nav-emoji">${this.getMessageTypeEmoji(el)}</span>Item ${index + 1}`;
 
       if (text.length > this.CONSTANTS.SUMMARY_MAX_LEN) {
-        text = `${text.substring(0, this.CONSTANTS.SUMMARY_MAX_LEN)}...`;
+        text = text.substring(0, this.CONSTANTS.SUMMARY_MAX_LEN) + "...";
       }
-
-      const emoji = this.#getMessageTypeEmoji(el);
+      const emoji = this.getMessageTypeEmoji(el);
       return `<span class="nav-emoji">${emoji}</span>${text}`;
     }
 
-    #debounce(func, wait) {
+    getMessageTypeEmoji(el) {
+      return this.getMessageTypeEmoji(el);
+    }
+
+    debounce(func, wait) {
       let timeout;
       return (...args) => {
         clearTimeout(timeout);
         timeout = setTimeout(() => func(...args), wait);
       };
     }
-
-    #throttle(func, limit) {
+    throttle(func, limit) {
       let inThrottle;
       return (...args) => {
         if (!inThrottle) {
@@ -1361,31 +1035,27 @@
         }
       };
     }
-
-    #platform = null;
-    #scrollParent = null;
-    #debouncedBuildNav = null;
-    #throttledUpdateActiveLink = null;
-    #idToElementMap = new Map();
-    #effectManager = null;
-    #settingsModal = null;
-    #storageManager = null;
   }
 
-  function init(options) {
-    const config = normalizeConfig(options);
-    if (!config.platforms.length) {
-      console.warn("[NotionStyleNavigator] 未提供平台配置，导航将不会初始化。");
-      return;
+  function detectPlatform(cfg) {
+    const currentHost = global.location.host;
+    return (cfg.platforms || []).find((p) => p.hosts?.some((h) => currentHost.includes(h)));
+  }
+
+  NotionStyleAINavigator.init = function init(userConfig = {}) {
+    const cfg = deepMerge(DEFAULT_CONFIG, userConfig);
+    if (typeof cfg.shouldRun === "function" && !cfg.shouldRun(global.location)) {
+      return null;
     }
-    const navigator = new PromptNavigator(config);
-    navigator.init();
-    return navigator;
-  }
+    const platform = detectPlatform(cfg);
+    if (!platform) {
+      // Optional: console.log("Prompt Navigator: No supported platform detected.");
+      return null;
+    }
+    const nav = new PromptNavigator(cfg, platform);
+    nav.init();
+    return nav;
+  };
 
-  if (!global.NotionStyleNavigator) {
-    global.NotionStyleNavigator = {};
-  }
-  global.NotionStyleNavigator.init = init;
-})(typeof window !== "undefined" ? window : globalThis);
-
+  global.NotionStyleAINavigator = NotionStyleAINavigator;
+})(typeof window !== "undefined" ? window : this);
