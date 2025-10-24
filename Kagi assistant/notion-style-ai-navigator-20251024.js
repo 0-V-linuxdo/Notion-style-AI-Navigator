@@ -475,11 +475,13 @@
       CODE_LANG_LABEL_CLASS: "prompt-nav-code-lang-label",
       USER_EMOJI: "❓",
       ASSISTANT_EMOJI: "🤖",
+      SYSTEM_EMOJI: "ℹ️",
     };
 
     #config = null;
     #menuAdapter = null;
     #messageValidator = null;
+    #messageRoleResolver = null;
     #messageCollector = null;
     #platform = null;
     #scrollParent = null;
@@ -524,6 +526,24 @@
         };
       } else {
         this.#messageValidator = this.#defaultMessageValidator.bind(this);
+      }
+
+      if (this.#platform && typeof this.#platform.getMessageRole === "function") {
+        const customRoleResolver = this.#platform.getMessageRole;
+        this.#messageRoleResolver = (element) => {
+          try {
+            const result = customRoleResolver(element, this.#platform);
+            if (result === undefined || result === null) {
+              return this.#defaultMessageRoleResolver(element);
+            }
+            return result;
+          } catch (error) {
+            console.warn("[Prompt Navigator] getMessageRole failed:", error);
+            return this.#defaultMessageRoleResolver(element);
+          }
+        };
+      } else {
+        this.#messageRoleResolver = this.#defaultMessageRoleResolver.bind(this);
       }
 
       if (this.#platform && typeof this.#platform.collectMessages === "function") {
@@ -731,6 +751,65 @@
       return hasChatBubbleClass || hasArticleRole;
     }
 
+    #defaultMessageRoleResolver(el) {
+      if (!el || typeof el.getAttribute !== "function") {
+        return "assistant";
+      }
+
+      const dataset = /** @type {HTMLElement & { dataset?: DOMStringMap }} */ (el).dataset || {};
+      const authorAttr = el.getAttribute("data-author") || dataset.author;
+      if (authorAttr) {
+        const normalized = authorAttr.trim().toLowerCase();
+        if (normalized === "user" || normalized === "human") {
+          return "user";
+        }
+        if (normalized === "assistant" || normalized === "bot" || normalized === "ai") {
+          return "assistant";
+        }
+      }
+
+      const roleAttr =
+        el.getAttribute("data-role") ||
+        dataset.role ||
+        el.getAttribute("data-message-role") ||
+        dataset.messageRole ||
+        dataset.actor ||
+        dataset.speaker;
+      if (roleAttr) {
+        const normalized = roleAttr.trim().toLowerCase();
+        if (normalized === "user" || normalized === "human") {
+          return "user";
+        }
+        if (normalized === "assistant" || normalized === "bot" || normalized === "ai") {
+          return "assistant";
+        }
+      }
+
+      const ariaLabel = el.getAttribute("aria-label");
+      if (ariaLabel) {
+        const lower = ariaLabel.toLowerCase();
+        if (lower.includes("you said") || lower.includes("user said")) {
+          return "user";
+        }
+        if (lower.includes("assistant said") || lower.includes("bot said")) {
+          return "assistant";
+        }
+      }
+
+      if (el.classList.contains("user") || el.classList.contains("message-user")) {
+        return "user";
+      }
+      if (
+        el.classList.contains("assistant") ||
+        el.classList.contains("message-assistant") ||
+        el.classList.contains("bot")
+      ) {
+        return "assistant";
+      }
+
+      return "assistant";
+    }
+
     /**
      * 检查元素是否为纯分支选择器组件
      * @param {HTMLElement} el - 要检查的元素
@@ -765,30 +844,43 @@
     }
 
     /**
-     * 【新增】根据消息类型获取对应的表情
+     * 根据消息类型获取对应的表情
      * @param {HTMLElement} el - 消息元素
      * @returns {string} 对应的表情
      */
     #getMessageTypeEmoji(el) {
-      // 优先使用 data-author 属性
-      const author = el.getAttribute('data-author');
-      if (author === 'user') {
-        return this.CONSTANTS.USER_EMOJI;
-      } else if (author === 'assistant') {
-        return this.CONSTANTS.ASSISTANT_EMOJI;
+      const resolver = this.#messageRoleResolver || this.#defaultMessageRoleResolver.bind(this);
+      let role = null;
+
+      try {
+        role = resolver(el);
+      } catch (error) {
+        console.warn("[Prompt Navigator] message role resolver failed:", error);
+        role = null;
       }
 
-      // 备用方案：通过 aria-label 判断
-      const ariaLabel = el.getAttribute('aria-label');
-      if (ariaLabel) {
-        if (ariaLabel.includes('You said:')) {
+      if (role === undefined || role === null) {
+        role = this.#defaultMessageRoleResolver(el);
+      }
+
+      if (typeof role === "string") {
+        const trimmed = role.trim();
+        const normalized = trimmed.toLowerCase();
+
+        if (normalized === "user" || normalized === "human" || normalized === "question") {
           return this.CONSTANTS.USER_EMOJI;
-        } else if (ariaLabel.includes('Assistant said:')) {
+        }
+        if (normalized === "assistant" || normalized === "bot" || normalized === "answer" || normalized === "ai") {
           return this.CONSTANTS.ASSISTANT_EMOJI;
+        }
+        if (normalized === "system" && typeof this.CONSTANTS.SYSTEM_EMOJI === "string") {
+          return this.CONSTANTS.SYSTEM_EMOJI;
+        }
+        if (trimmed && !/^[a-z]+$/.test(normalized)) {
+          return trimmed;
         }
       }
 
-      // 默认返回助手表情（大多数情况下是回答）
       return this.CONSTANTS.ASSISTANT_EMOJI;
     }
 
