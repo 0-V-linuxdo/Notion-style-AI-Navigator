@@ -480,6 +480,7 @@
     #config = null;
     #menuAdapter = null;
     #messageValidator = null;
+    #messageCollector = null;
     #platform = null;
     #scrollParent = null;
     #debouncedBuildNav = null;
@@ -525,6 +526,21 @@
         this.#messageValidator = this.#defaultMessageValidator.bind(this);
       }
 
+      if (this.#platform && typeof this.#platform.collectMessages === "function") {
+        this.#messageCollector = (doc) => {
+          try {
+            const collected = this.#platform.collectMessages(doc, this.#platform);
+            if (Array.isArray(collected) || collected instanceof NodeList) {
+              return Array.from(collected);
+            }
+            return [];
+          } catch (error) {
+            console.warn("[Prompt Navigator] collectMessages failed:", error);
+            return [];
+          }
+        };
+      }
+
       this.#effectManager = new EffectManager(storageAdapter);
       this.#settingsModal = new SettingsModal(this.#effectManager);
 
@@ -567,6 +583,7 @@
 
     buildNav() {
       const messages = this.#queryMessages();
+      console.info(`[Prompt Navigator] Detected ${messages.length} message node(s).`);
 
       if (messages.length === this.#idToElementMap.size && messages.length > 0) {
         let allMatch = true;
@@ -614,6 +631,7 @@
       document.body.appendChild(container);
 
       this.#updateTheme();
+      console.info(`[Prompt Navigator] Navigation rendered with ${navItems.length} item(s).`);
       this.updateActiveLink();
     }
 
@@ -652,10 +670,19 @@
     }
 
     #queryMessages() {
-      const selector = this.#platform.messageSelector;
-      const nodes = Array.from(document.querySelectorAll(selector));
+      let nodes = [];
+      if (typeof this.#messageCollector === "function") {
+        nodes = this.#messageCollector(document) || [];
+      }
+
+      if (!nodes || nodes.length === 0) {
+        const selector = this.#platform.messageSelector;
+        nodes = Array.from(document.querySelectorAll(selector));
+      }
+
+      const seen = new Set();
       // 过滤可能的非消息节点：需要具备一些文本或包含内容区域
-      return nodes.filter((el) => {
+      const filtered = nodes.filter((el) => {
         if (!(el instanceof HTMLElement)) return false;
         if (!document.body.contains(el)) return false;
 
@@ -671,8 +698,31 @@
 
         // 排除纯装饰或空节点
         const text = this.#extractText(el).trim();
-        return text.length > 0 || el.querySelector("pre, code, p, blockquote, ul, ol");
+        const hasContent = text.length > 0 || el.querySelector("pre, code, p, blockquote, ul, ol");
+        if (!hasContent) return false;
+
+        if (seen.has(el)) return false;
+        seen.add(el);
+        return true;
       });
+
+      try {
+        filtered.sort((a, b) => {
+          if (a === b) return 0;
+          const pos = a.compareDocumentPosition(b);
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+            return 1;
+          }
+          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return -1;
+          }
+          return 0;
+        });
+      } catch (error) {
+        console.warn("[Prompt Navigator] Unable to sort messages:", error);
+      }
+
+      return filtered;
     }
 
     #defaultMessageValidator(el) {
