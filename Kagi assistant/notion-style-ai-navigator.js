@@ -479,6 +479,7 @@
 
     #config = null;
     #menuAdapter = null;
+    #messageValidator = null;
     #platform = null;
     #scrollParent = null;
     #debouncedBuildNav = null;
@@ -500,6 +501,24 @@
 
       this.#platform = this.#detectPlatform();
       if (!this.#platform) return;
+
+      const platformValidator =
+        this.#platform && typeof this.#platform.validateMessage === "function"
+          ? this.#platform.validateMessage
+          : null;
+
+      if (platformValidator) {
+        this.#messageValidator = (element) => {
+          try {
+            return platformValidator(element, this.#platform) !== false;
+          } catch (error) {
+            console.warn("[Prompt Navigator] validateMessage failed:", error);
+            return true;
+          }
+        };
+      } else {
+        this.#messageValidator = this.#defaultMessageValidator.bind(this);
+      }
 
       this.#effectManager = new EffectManager(storageAdapter);
       this.#settingsModal = new SettingsModal(this.#effectManager);
@@ -632,8 +651,10 @@
         if (!(el instanceof HTMLElement)) return false;
         if (!document.body.contains(el)) return false;
 
-        const isBubble = el.classList.contains("chat_bubble") || el.getAttribute("role") === "article";
-        if (!isBubble) return false;
+        const validator = this.#messageValidator;
+        if (validator && validator(el) === false) {
+          return false;
+        }
 
         // 检查是否为纯分支选择器组件
         if (this.#isBranchSelectorOnly(el)) {
@@ -644,6 +665,12 @@
         const text = this.#extractText(el).trim();
         return text.length > 0 || el.querySelector("pre, code, p, blockquote, ul, ol");
       });
+    }
+
+    #defaultMessageValidator(el) {
+      const hasChatBubbleClass = el.classList.contains("chat_bubble");
+      const hasArticleRole = el.getAttribute("role") === "article";
+      return hasChatBubbleClass || hasArticleRole;
     }
 
     /**
