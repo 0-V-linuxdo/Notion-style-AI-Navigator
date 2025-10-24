@@ -500,7 +500,12 @@
       }
 
       this.#platform = this.#detectPlatform();
-      if (!this.#platform) return;
+      if (!this.#platform) {
+        console.info("[Prompt Navigator] No matching platform for host:", window.location.host);
+        return;
+      }
+
+      console.info("[Prompt Navigator] Platform detected:", this.#platform.name);
 
       const platformValidator =
         this.#platform && typeof this.#platform.validateMessage === "function"
@@ -596,7 +601,10 @@
         existingContainer.remove();
       }
 
-      if (navItems.length === 0) return;
+      if (navItems.length === 0) {
+        console.info("[Prompt Navigator] No messages found, navigation not rendered yet.");
+        return;
+      }
 
       const container = this.#createContainer();
       const indicator = this.#createIndicator(navItems);
