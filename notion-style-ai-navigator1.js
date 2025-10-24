@@ -1,66 +1,20 @@
-(function (global) {
+// notion-style-ai-navigator.js
+// Notion 风格 AI 导航核心功能库
+// Version: 1.0.1
+
+(function(global) {
   "use strict";
-
-  // ================================================
-  // 原脚本信息：
-  // 名称：Notion 风格的 ChatGPT、Gemini 导航目录
-  // 作者：YuJian
-  // 链接：https://greasyfork.org/scripts/541002
-  // 版本：2.3.0
-  // ================================================
-
-  const DEFAULT_CONSTANTS = {
-    CONTAINER_ID: "prompt-nav-container",
-    INDICATOR_ID: "prompt-nav-indicator",
-    MENU_ID: "prompt-nav-menu",
-    INDICATOR_LINE_CLASS: "nav-indicator-line",
-    ACTIVE_CLASS: "active",
-    MESSAGE_ID_PREFIX: "prompt-nav-item-",
-    SCROLL_OFFSET: 30,
-    SCROLL_END_TIMEOUT: 150,
-    DEBOUNCE_BUILD_MS: 500,
-    THROTTLE_UPDATE_MS: 100,
-    INIT_DELAY_MS: 2000,
-    SUMMARY_MAX_LEN: 60,
-    CODE_LANG_LABEL_CLASS: "prompt-nav-code-lang-label",
-    USER_EMOJI: "❓",
-    ASSISTANT_EMOJI: "🤖",
-  };
-
-  const DEFAULT_STORAGE_KEY = 'prompt-nav-effect-mode';
-  const DEFAULT_EFFECT_ID = 'border';
-
-  const DEFAULT_EFFECTS = [
-    { id: 'none', name: '无效果（纯平滑滚动）', description: '仅滚动，不显示任何动画效果' },
-    { id: 'border', name: '高亮边框', description: '显示 3px 彩色边框，持续 2 秒' },
-    { id: 'pulse', name: '脉冲光晕', description: '边框脉冲闪烁，持续 2 秒' },
-    { id: 'fade', name: '淡入淡出', description: '背景淡入淡出效果，持续 1.5 秒' },
-    { id: 'jiggle', name: '经典抖动', description: '水平微抖动（原效果）' }
-  ];
 
   /**
    * 存储管理器 - 处理用户设置持久化
    */
   class StorageManager {
-    static DEFAULT_EFFECT = DEFAULT_EFFECT_ID;
-    static STORAGE_KEY = DEFAULT_STORAGE_KEY;
-
-    static configure(options = {}) {
-      if (!options || typeof options !== 'object') {
-        this.DEFAULT_EFFECT = DEFAULT_EFFECT_ID;
-        this.STORAGE_KEY = DEFAULT_STORAGE_KEY;
-        return;
-      }
-      const { defaultEffect, storageKey } = options;
-      this.DEFAULT_EFFECT = typeof defaultEffect === 'string' ? defaultEffect : DEFAULT_EFFECT_ID;
-      this.STORAGE_KEY = typeof storageKey === 'string' && storageKey.trim()
-        ? storageKey
-        : DEFAULT_STORAGE_KEY;
-    }
+    static DEFAULT_EFFECT = 'border';
+    static STORAGE_KEY = 'prompt-nav-effect-mode';
 
     static getEffect() {
       try {
-        return GM_getValue(this.STORAGE_KEY, this.DEFAULT_EFFECT);
+        return global.GM_getValue ? global.GM_getValue(this.STORAGE_KEY, this.DEFAULT_EFFECT) : this.DEFAULT_EFFECT;
       } catch (e) {
         return this.DEFAULT_EFFECT;
       }
@@ -68,7 +22,9 @@
 
     static setEffect(effect) {
       try {
-        GM_setValue(this.STORAGE_KEY, effect);
+        if (global.GM_setValue) {
+          global.GM_setValue(this.STORAGE_KEY, effect);
+        }
       } catch (e) {
         console.warn('[Prompt Navigator] 无法保存设置：', e);
       }
@@ -79,21 +35,6 @@
    * 效果管理器 - 处理所有视觉效果
    */
   class EffectManager {
-    static AVAILABLE_EFFECTS = [...DEFAULT_EFFECTS];
-
-    static configure(options = {}) {
-      if (!options || typeof options !== 'object') {
-        this.AVAILABLE_EFFECTS = [...DEFAULT_EFFECTS];
-        return;
-      }
-      const { availableEffects } = options;
-      if (Array.isArray(availableEffects) && availableEffects.length > 0) {
-        this.AVAILABLE_EFFECTS = availableEffects;
-      } else {
-        this.AVAILABLE_EFFECTS = [...DEFAULT_EFFECTS];
-      }
-    }
-
     constructor() {
       this.currentElement = null;
       this.currentEffect = StorageManager.getEffect();
@@ -113,7 +54,13 @@
      * 获取可用的所有效果
      */
     getAvailableEffects() {
-      return EffectManager.AVAILABLE_EFFECTS;
+      return [
+        { id: 'none', name: '无效果（纯平滑滚动）', description: '仅滚动，不显示任何动画效果' },
+        { id: 'border', name: '高亮边框', description: '显示 3px 彩色边框，持续 2 秒' },
+        { id: 'pulse', name: '脉冲光晕', description: '边框脉冲闪烁，持续 2 秒' },
+        { id: 'fade', name: '淡入淡出', description: '背景淡入淡出效果，持续 1.5 秒' },
+        { id: 'jiggle', name: '经典抖动', description: '水平微抖动（原效果）' }
+      ];
     }
 
     /**
@@ -424,7 +371,24 @@
   }
 
   class PromptNavigator {
-    #config = {};
+    CONSTANTS = {
+      CONTAINER_ID: "prompt-nav-container",
+      INDICATOR_ID: "prompt-nav-indicator",
+      MENU_ID: "prompt-nav-menu",
+      INDICATOR_LINE_CLASS: "nav-indicator-line",
+      ACTIVE_CLASS: "active",
+      MESSAGE_ID_PREFIX: "prompt-nav-item-",
+      SCROLL_OFFSET: 30,
+      SCROLL_END_TIMEOUT: 150,
+      DEBOUNCE_BUILD_MS: 500,
+      THROTTLE_UPDATE_MS: 100,
+      INIT_DELAY_MS: 2000,
+      SUMMARY_MAX_LEN: 60,
+      CODE_LANG_LABEL_CLASS: "prompt-nav-code-lang-label",
+      USER_EMOJI: "❓",
+      ASSISTANT_EMOJI: "🤖",
+    };
+
     #platform = null;
     #scrollParent = null;
     #debouncedBuildNav = null;
@@ -432,10 +396,10 @@
     #idToElementMap = new Map();
     #effectManager = null;
     #settingsModal = null;
+    #config = null;
 
-    constructor(config = {}) {
-      this.#config = config && typeof config === 'object' ? config : {};
-      this.CONSTANTS = { ...DEFAULT_CONSTANTS, ...((this.#config.constants || {})) };
+    constructor(config) {
+      this.#config = config || {};
       this.#platform = this.#detectPlatform();
       if (!this.#platform) return;
 
@@ -448,13 +412,9 @@
 
     init() {
       if (!this.#platform) {
-        console.log("[Prompt Navigator] 当前页面未匹配到受支持的平台。");
+        console.log("Prompt Navigator: No supported platform detected.");
         return;
       }
-
-      const initDelay = typeof this.#config.initDelayMs === 'number'
-        ? this.#config.initDelayMs
-        : this.CONSTANTS.INIT_DELAY_MS;
 
       setTimeout(() => {
         this.#addStyles();
@@ -470,9 +430,11 @@
      */
     #registerMenuCommand() {
       try {
-        GM_registerMenuCommand('⚙️ 导航效果设置', () => {
-          this.#settingsModal.open();
-        });
+        if (global.GM_registerMenuCommand) {
+          global.GM_registerMenuCommand('⚙️ 导航效果设置', () => {
+            this.#settingsModal.open();
+          });
+        }
       } catch (e) {
         // 某些环境没有 GM_registerMenuCommand
         console.warn('[Prompt Navigator] GM_registerMenuCommand 不可用：', e);
@@ -782,63 +744,9 @@
     }
 
     #detectPlatform() {
-      const location = window.location;
-      const currentHost = location.host;
-      const platforms = Array.isArray(this.#config.platforms) ? this.#config.platforms : [];
-
-      for (const platform of platforms) {
-        if (!platform || typeof platform !== 'object') continue;
-
-        const hosts = Array.isArray(platform.hosts) ? platform.hosts : [];
-        const hostMatches = hosts.length === 0
-          ? true
-          : hosts.some((host) => {
-              if (typeof host !== 'string' || !host.trim()) return false;
-              const normalizedHost = host.trim();
-              return (
-                currentHost === normalizedHost ||
-                currentHost.endsWith(`.${normalizedHost}`) ||
-                currentHost.includes(normalizedHost)
-              );
-            });
-
-        if (!hostMatches) continue;
-
-        let isActive = true;
-        if (typeof platform.shouldActivate === 'function') {
-          try {
-            isActive = Boolean(platform.shouldActivate(location));
-          } catch (error) {
-            console.warn('[Prompt Navigator] 平台 shouldActivate 执行失败：', error);
-            isActive = false;
-          }
-        } else {
-          const { pathname } = location;
-          if (Array.isArray(platform.paths) && platform.paths.length > 0) {
-            isActive = platform.paths.some((pathPattern) => {
-              if (pathPattern instanceof RegExp) {
-                return pathPattern.test(pathname);
-              }
-              if (typeof pathPattern === 'string') {
-                return pathname === pathPattern;
-              }
-              return false;
-            });
-          }
-
-          if (isActive && Array.isArray(platform.pathPrefixes) && platform.pathPrefixes.length > 0) {
-            isActive = platform.pathPrefixes.some((prefix) => {
-              return typeof prefix === 'string' ? pathname.startsWith(prefix) : false;
-            });
-          }
-        }
-
-        if (isActive) {
-          return platform;
-        }
-      }
-
-      return null;
+      const currentHost = window.location.host;
+      const platforms = this.#config.platforms || [];
+      return platforms.find((p) => p.hosts.some((h) => currentHost.includes(h)));
     }
 
     #setupObservers() {
@@ -1463,18 +1371,12 @@
     }
   }
 
-  function initNavigator(config = {}) {
-    const safeConfig = config && typeof config === 'object' ? config : {};
-    StorageManager.configure(safeConfig.storage);
-    EffectManager.configure(safeConfig.effects);
-
-    const navigator = new PromptNavigator(safeConfig);
-    navigator.init();
-    return navigator;
-  }
-
-  global.NotionStyleAiNavigator = {
-    ...(global.NotionStyleAiNavigator || {}),
-    init: initNavigator,
+  // 导出到全局
+  global.NotionStyleAINavigator = {
+    PromptNavigator,
+    StorageManager,
+    EffectManager,
+    SettingsModal
   };
-})(typeof window !== 'undefined' ? window : globalThis);
+
+})(typeof window !== 'undefined' ? window : this);
