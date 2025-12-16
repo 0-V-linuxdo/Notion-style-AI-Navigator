@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         [Claude] Notion 风格的导航目录 [20251216] v1.0.0
+// @name         [Claude] Notion 风格的导航目录 [20251216] v1.1.0
 // @namespace    0_V userscripts/Notion 风格的 claude.ai 导航目录
 // @description  为 Claude.ai 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
-// @version      [20251216] v1.0.0
-// @update-log   v1.0.0: 新增 claude.ai 适配；修正模型下拉被误标；高亮贴合整块气泡
+// @version      [20251216] v1.1.0
+// @update-log   v1.1.0: 优化摘要忽略思考/检索卡片，优先取最终正文；加强去重与标记来源
 //
 // @match        https://claude.ai/*
 // @match        https://www.claude.ai/*
@@ -67,6 +67,7 @@
       target.setAttribute("role", "article");
       target.setAttribute("data-author", author);
       target.setAttribute(FLAG, "1");
+      target.setAttribute("data-nsan-owner", "nsan");
     };
 
     const runOnce = () => {
@@ -120,8 +121,8 @@
       {
         name: "Claude.ai",
         hosts: ["claude.ai", "www.claude.ai"],
-        // 仅选取我们打标过的正文节点，避免把工具栏/历史记录面板纳入
-        messageSelector: "[data-nsan-article='1']",
+        // 仅选取我们标记的节点，排除 Claude 原生的 data-nsan-article 子块（如搜索卡片、工具结果）
+        messageSelector: "[data-nsan-owner='nsan']",
       },
     ];
 
@@ -157,6 +158,68 @@
 
     const { PromptNavigator } = window.NotionStyleNavigator;
     const navigator = new PromptNavigator(navigatorConfig);
+
+    // 处理 Claude DOM 中偶发的重复块（同作者+同文本的多处渲染/镜像），避免导航列表出现重复项
+    const originalQueryMessages = navigator.queryMessages.bind(navigator);
+    navigator.queryMessages = function () {
+      const messages = originalQueryMessages();
+      const deduped = [];
+      const seen = new Set();
+
+      const normalizeForKey = (txt) => {
+        return txt
+          .replace(/\s+/g, " ")
+          .replace(/[，。.,!?！？；;]+\s*$/, "")
+          .trim()
+          .slice(0, 140); // 用开头片段做去重，避免长文微差导致重复
+      };
+
+      for (const el of messages) {
+        // 只保留顶层打标元素，忽略被包含的内层重复节点
+        if (el.closest("[data-nsan-article='1']") !== el) continue;
+
+        // 跳过不可见或被隐藏的节点
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden" || el.getAttribute("hidden") !== null) {
+          continue;
+        }
+
+        const author = el.getAttribute("data-author") || "";
+        const text = this.extractText(el).trim();
+        if (!text) continue;
+
+        const key = `${author}|${normalizeForKey(text)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(el);
+      }
+      return deduped;
+    };
+
+    // Claude 专用摘要：优先取最终答案区的 standard-markdown 文本，忽略思考/检索卡片
+    const originalSummarize = navigator.summarizeMessage.bind(navigator);
+    navigator.summarizeMessage = function (el, index) {
+      const author = el.getAttribute("data-author");
+      if (author === "assistant") {
+        const mdBlocks = Array.from(el.querySelectorAll(".standard-markdown"));
+        let finalText = "";
+        mdBlocks.forEach((md) => {
+          const t = (md.textContent || "").replace(/\s+/g, " ").trim();
+          if (t) finalText = t; // 取最后出现的 standard-markdown，当作最终回答
+        });
+
+        if (finalText) {
+          const emoji = this.getMessageTypeEmoji(el);
+          let text = finalText;
+          if (text.length > this.CONSTANTS.SUMMARY_MAX_LEN) {
+            text = text.substring(0, this.CONSTANTS.SUMMARY_MAX_LEN) + "...";
+          }
+          return `<span class="nav-emoji">${emoji}</span>${this.escapeHtml(text)}`;
+        }
+      }
+      return originalSummarize(el, index);
+    };
+
     navigator.init();
 
     console.log("[Prompt Navigator] Claude.ai 导航目录已初始化");
