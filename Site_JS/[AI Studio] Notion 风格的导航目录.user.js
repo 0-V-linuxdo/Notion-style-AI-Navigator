@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [AI Studio] Notion 风格的导航目录 [20251201] v1.0.0
+// @name         [AI Studio] Notion 风格的导航目录 [20251216] v1.0.0
 // @namespace    0_V userscripts/Notion 风格的 AI Studio 导航目录
 // @description  为 Google AI Studio 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。支持思考过程识别。
 //
-// @version      [20241222] v1.0.2
-// @update-log   v1.0.2: 清理导航显示内容，去除多余的角色标识，思考过程显示为Thoughts
+// @version      [20251216] v1.0.0
+// @update-log   v1.0.0: 补充原脚本信息，统一版本标识为 [20251216] v1.0.0
 //
 // @match        https://aistudio.google.com/*
 //
@@ -15,10 +15,18 @@
 // @license      MIT
 // @forked-from  https://greasyfork.org/scripts/541002
 //
-// @icon         https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/refs/heads/main/site_icons/AI_studio.svg
+// @icon         https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/refs/heads/main/site_icons/AI_studio.svg?v=1.0.0
 //
 // @require      https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/refs/heads/0-V-linuxdo-patch-1/notion-style-ai-navigator2.js
 // ==/UserScript==
+
+// ================================================
+// 原脚本信息：
+// 名称：Notion 风格的 ChatGPT、Gemini 导航目录
+// 作者：YuJian
+// 链接：https://greasyfork.org/scripts/541002
+// 版本：2.3.0
+// ================================================
 
 // ================================================
 // 基于 Notion 风格的 AI 导航目录核心功能
