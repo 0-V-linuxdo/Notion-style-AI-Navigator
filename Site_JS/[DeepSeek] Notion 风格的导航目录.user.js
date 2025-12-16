@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [DeepSeek] Notion 风格的导航目录 [20241220] v1.0.2
+// @name         [DeepSeek] Notion 风格的导航目录 [20251216] v1.0.0
 // @namespace    0_V userscripts/Notion 风格的 deepseek 导航目录
 // @description  为 DeepSeek 网页版添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
-// @version      [20241220] v1.0.2
-// @update-log   v1.0.2: 限定适配域名为 chat.deepseek.com
+// @version      [20251216] v1.0.0
+// @update-log   [20251216] v1.0.0: 调整高亮定位，边框贴合 DeepSeek 气泡
 //
 // @match        https://chat.deepseek.com/*
 //
@@ -84,6 +84,41 @@
 
     const navigator = new window.NotionStyleNavigator.PromptNavigator(navigatorConfig);
 
+    const getHighlightTarget = (messageEl) => {
+      if (!messageEl) return null;
+
+      const isUsable = (el) => {
+        if (!(el instanceof HTMLElement)) return false;
+        const rect = el.getBoundingClientRect();
+        const hasSize = rect.width > 0 && rect.height > 0;
+        const hasText = (el.textContent || "").trim().length > 0;
+        return hasSize && hasText;
+      };
+
+      const mainMarkdowns = Array.from(
+        messageEl.querySelectorAll(".ds-markdown")
+      ).filter((el) => !el.closest(".ds-think-content") && isUsable(el));
+      if (mainMarkdowns.length > 0) {
+        return mainMarkdowns[mainMarkdowns.length - 1];
+      }
+
+      const candidateSelectors = [
+        ".fbb737a4",
+        ".ds-think-content .ds-markdown",
+        ".ds-markdown",
+        "._74c0879"
+      ];
+
+      for (const selector of candidateSelectors) {
+        const candidate = messageEl.querySelector(selector);
+        if (isUsable(candidate)) {
+          return candidate;
+        }
+      }
+
+      return messageEl;
+    };
+
     const originalQueryMessages = navigator.queryMessages.bind(navigator);
     navigator.queryMessages = function() {
       const selector = this.platform.messageSelector;
@@ -156,6 +191,83 @@
       }
 
       return originalExtractText(rootEl);
+    };
+
+    const originalSummarize = navigator.summarizeMessage.bind(navigator);
+    navigator.summarizeMessage = function(el, index) {
+      const pickMainText = () => {
+        const mainMarkdowns = Array.from(el.querySelectorAll('.ds-markdown'))
+          .filter((md) => !md.closest('.ds-think-content') && (md.textContent || '').trim().length > 0);
+        if (mainMarkdowns.length > 0) {
+          const last = mainMarkdowns[mainMarkdowns.length - 1];
+          return (last.textContent || '').replace(/\s+/g, ' ').trim();
+        }
+
+        const userEl = el.querySelector('.fbb737a4');
+        if (userEl && (userEl.textContent || '').trim().length > 0) {
+          return (userEl.textContent || '').replace(/\s+/g, ' ').trim();
+        }
+
+        return '';
+      };
+
+      let text = pickMainText();
+
+      if (!text) {
+        const clone = el.cloneNode(true);
+        const noisySelectors = [
+          ".ds-think-content",
+          ".ds-icon",
+          ".ds-icon-button",
+          ".ds-atom-button",
+          ".ds-floating-button",
+          ".ffdab56b",
+          ".c99b79f8",
+          ".site_logo_back",
+          ".d162f7b9"
+        ];
+        noisySelectors.forEach(sel => {
+          clone.querySelectorAll(sel).forEach(node => node.remove());
+        });
+        text = (clone.textContent || "").replace(/\s+/g, " ").trim();
+      }
+
+      if (!text) {
+        return originalSummarize(el, index);
+      }
+
+      if (text.length > this.CONSTANTS.SUMMARY_MAX_LEN) {
+        text = text.substring(0, this.CONSTANTS.SUMMARY_MAX_LEN) + "...";
+      }
+
+      const emoji = this.getMessageTypeEmoji(el);
+      return `<span class="nav-emoji">${emoji}</span>${text}`;
+    };
+
+    navigator.scrollToMessage = function(messageElement) {
+      const targetEl = getHighlightTarget(messageElement) || messageElement;
+      const scrollParent = this.scrollParent || this.findScrollableParent(targetEl);
+      if (!this.scrollParent) this.scrollParent = scrollParent;
+
+      let scrollTimeout;
+      const scrollEndListener = () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          this.effectManager.applyEffect(targetEl);
+          scrollParent.removeEventListener("scroll", scrollEndListener);
+        }, this.CONSTANTS.SCROLL_END_TIMEOUT);
+      };
+      scrollParent.addEventListener("scroll", scrollEndListener);
+
+      const parentTop = scrollParent === document.documentElement ? 0 : scrollParent.getBoundingClientRect().top;
+      const msgTop = targetEl.getBoundingClientRect().top;
+      const scrollTop = (scrollParent.scrollTop || window.scrollY) + msgTop - parentTop - this.CONSTANTS.SCROLL_OFFSET;
+
+      if (typeof scrollParent.scrollTo === "function") {
+        scrollParent.scrollTo({ top: scrollTop, behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: scrollTop, behavior: "smooth" });
+      }
     };
 
     navigator.init();
