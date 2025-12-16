@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         [LeChat] Notion 风格的导航目录 [20251024] v1.0.1
+// @name         [LeChat] Notion 风格的导航目录 [20251216] v1.0.0
 // @namespace    0_V userscripts/Notion 风格的 AI 导航目录
 // @description  为 Mistral LeChat（chat.mistral.ai）添加 Notion 风格悬浮导航目录；仅含配置与适配逻辑，核心功能由外部脚本提供。
-// @version      [20251024] v1.0.1
-// @update-log   v1.0.1: 精准标注“用户输入区域”，缩小高亮范围；仅对真正消息气泡/正文打标
+// @version      [20251216] v1.0.0
+// @update-log   v1.0.0: 补充原脚本信息与来源，保持与其他平台脚本一致
 //
 // @match        https://chat.mistral.ai/*
 //
@@ -12,10 +12,19 @@
 // @grant        GM_setValue
 //
 // @license      MIT
+// @forked-from  https://greasyfork.org/scripts/541002
 // @icon         https://chat.mistral.ai/favicon.ico
 //
 // @require      https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/refs/heads/0-V-linuxdo-patch-1/notion-style-ai-navigator2.js
 // ==/UserScript==
+
+// ================================================
+// 原脚本信息：
+// 名称：Notion 风格的 ChatGPT、Gemini 导航目录
+// 作者：YuJian
+// 链接：https://greasyfork.org/scripts/541002
+// 版本：2.3.0
+// ================================================
 
 (function () {
   "use strict";
