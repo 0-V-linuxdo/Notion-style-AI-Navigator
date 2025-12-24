@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [ChatHub] Notion 风格的导航目录 [20251218] v1.0.8
+// @name         [ChatHub] Notion 风格的导航目录 [20251224] v1.1.0
 // @namespace    0_V userscripts/Notion 风格的 ChatHub 导航目录
 // @description  为 ChatHub 网页版添加悬浮导航目录，每个对话区域拥有独立的导航目录，支持随区域定位。
 //
-// @version      [20251218] v1.0.13
-// @update-log   v1.0.13: AI回复需要至少50字符（约2行）后才显示在导航栏，避免流式输出时提取不完整。
+// @version      [20251224] v1.1.0
+// @update-log   v1.1.0: 下调侧边栏组件 z-index（设为 0），避免遮挡网页悬浮弹窗。
 //
 // @match        https://app.chathub.gg/*
 //
@@ -368,6 +368,8 @@
       }
       /* Ensure nav containers transition smoothly when areas move */
       [id^="prompt-nav-container"] {
+        /* Use non-positive stacking to avoid covering site modals/popovers that rely on default z-index layering */
+        z-index: 0 !important;
         transition: top 0.2s ease, right 0.2s ease, opacity 0.2s ease;
       }
     `;
