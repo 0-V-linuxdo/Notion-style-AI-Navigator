@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [Kagi] Notion 风格的导航目录2 [20251201] v1.0.0
-// @namespace    0_V userscripts/Notion 风格的 kagi assistant 导航目录
+// @name         [Kagi] Notion 风格的导航目录2 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 Kagi Assistant 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
-// @version      [20251022] v1.0.1
-// @update-log   v1.0.1: 扩展匹配域并增加路径判定；拆分为核心功能外部脚本和调用脚本
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 扩展匹配域并增加路径判定；拆分为核心功能外部脚本和调用脚本
 //
 // @match        https://kagi.com/*
 //
