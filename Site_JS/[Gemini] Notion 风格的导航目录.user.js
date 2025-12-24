@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [Gemini] Notion 风格的导航目录 [20251216] v1.0.0
-// @namespace    0_V userscripts/Notion 风格的 Gemini 导航目录
+// @name         [Gemini] Notion 风格的导航目录 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 Gemini（gemini.google.com/bard.google.com）网页版添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
-// @version      [20251216] v1.0.0
-// @update-log   v1.0.0: 新增 Gemini 适配，标注用户与助手消息正文，兼容 gemini.google.com 与 bard.google.com
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 新增 Gemini 适配，标注用户与助手消息正文，兼容 gemini.google.com 与 bard.google.com
 //
 // @match        https://gemini.google.com/*
 // @match        https://bard.google.com/*
