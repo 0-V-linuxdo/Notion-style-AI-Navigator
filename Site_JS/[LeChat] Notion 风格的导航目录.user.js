@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         [LeChat] Notion 风格的导航目录 [20251216] v1.0.0
-// @namespace    0_V userscripts/Notion 风格的 AI 导航目录
+// @name         [LeChat] Notion 风格的导航目录 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 Mistral LeChat（chat.mistral.ai）添加 Notion 风格悬浮导航目录；仅含配置与适配逻辑，核心功能由外部脚本提供。
-// @version      [20251216] v1.0.0
-// @update-log   v1.0.0: 补充原脚本信息与来源，保持与其他平台脚本一致
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 补充原脚本信息与来源，保持与其他平台脚本一致
 //
 // @match        https://chat.mistral.ai/*
 //
