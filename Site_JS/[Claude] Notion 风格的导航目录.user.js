@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         [Claude] Notion 风格的导航目录 [20251216] v1.1.0
-// @namespace    0_V userscripts/Notion 风格的 claude.ai 导航目录
+// @name         [Claude] Notion 风格的导航目录 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 Claude.ai 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
-// @version      [20251216] v1.1.0
-// @update-log   v1.1.0: 优化摘要忽略思考/检索卡片，优先取最终正文；加强去重与标记来源
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 优化摘要忽略思考/检索卡片，优先取最终正文；加强去重与标记来源
 //
 // @match        https://claude.ai/*
 // @match        https://www.claude.ai/*
