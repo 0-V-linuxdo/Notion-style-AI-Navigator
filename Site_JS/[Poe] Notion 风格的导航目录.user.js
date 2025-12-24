@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [Poe] Notion 风格的导航目录 -1
-// @namespace    0_V userscripts/Notion 风格的 poe 导航目录
+// @name         [Poe] Notion 风格的导航目录 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 Poe 添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
-// @version      [20251022] v1.0.1
-// @update-log   v1.0.1: 适配 Poe 平台，支持动态加载的聊天消息
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 适配 Poe 平台，支持动态加载的聊天消息
 //
 // @match        https://poe.com/*
 //
