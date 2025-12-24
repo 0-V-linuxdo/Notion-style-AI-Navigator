@@ -13,12 +13,20 @@
 // @grant        GM_setValue
 //
 // @license      MIT
-// @author       0_V
+// @forked-from  https://greasyfork.org/scripts/541002
 //
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chathub.gg
 //
 // @require      https://github.com/0-V-linuxdo/Notion-style-AI-Navigator/raw/main/core/ai-navigator-core.js
 // ==/UserScript==
+
+// ================================================
+// 原脚本信息：
+// 名称：Notion 风格的 ChatGPT、Gemini 导航目录
+// 作者：YuJian
+// 链接：https://greasyfork.org/scripts/541002
+// 版本：2.3.0
+// ================================================
 
 (function () {
   "use strict";
