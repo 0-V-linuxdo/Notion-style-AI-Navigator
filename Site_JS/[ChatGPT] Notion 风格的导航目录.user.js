@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         [ChatGPT] Notion 风格的导航目录 [20251216] v1.0.0
-// @namespace    0_V userscripts/Notion 风格的 ChatGPT 导航目录
+// @name         [ChatGPT] Notion 风格的导航目录 [20251224] v1.0.0
+// @namespace    https://github.com/0-V-linuxdo/Notion-style-AI-Navigator
 // @description  为 ChatGPT 网页版添加悬浮导航目录，快速在对话消息间跳转，支持多种定位效果，包括高亮边框、脉冲光晕、淡入淡出等。
 //
-// @version      [20251216] v1.0.0
-// @update-log   v1.0.0: 新增 ChatGPT 适配，支持 chatgpt.com 与 chat.openai.com 新旧域名；修正滚动定位顶栏偏移问题
+// @version      [20251224] v1.0.0
+// @update-log   [20251224] v1.0.0: 新增 ChatGPT 适配，支持 chatgpt.com 与 chat.openai.com 新旧域名；修正滚动定位顶栏偏移问题
 //
 // @match        https://chatgpt.com/*
 // @match        https://www.chatgpt.com/*
