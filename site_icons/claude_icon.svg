@@ -9,7 +9,7 @@
   </defs>
   <path d="M2 12Q2 2 12 2Q22 2 22 12Q22 22 12 22L6 22L2 24L2 18Z" fill="#D97757" mask="url(#claude-bubble-mask1)"/>
   <g stroke="#000000" stroke-width="1.2" stroke-linecap="round">
-    <line x1="18" y1="2" x2="23" y2="2"/>
+    <line x1="16.5" y1="2" x2="23" y2="2"/>
     <line x1="18" y1="5" x2="23" y2="5"/>
     <line x1="18" y1="8" x2="23" y2="8"/>
   </g>
